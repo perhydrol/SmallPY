@@ -6,6 +6,7 @@ import numpy as np
 import cv2 as cv
 import mediapipe as mp
 from multiprocessing import Process, Pipe
+import subprocess as sp
 
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
@@ -35,12 +36,12 @@ def Pose(p_vido: Pipe, p_res: Pipe):
             vido = cv.cvtColor(vido, cv.COLOR_BGR2RGB)
             result = pose.process(vido)
             if result.pose_landmarks:
-              landmarks = result.pose_landmarks.landmark
-              left_shoulder = landmarks[12]
-              right_shoulder = landmarks[11]
-              p_res.send([left_shoulder, right_shoulder])
+                landmarks = result.pose_landmarks.landmark
+                left_shoulder = landmarks[12]
+                right_shoulder = landmarks[11]
+                p_res.send([left_shoulder, right_shoulder])
             else:
-              p_res.send([False])
+                p_res.send([False])
 
 
 def Hand(p_vido: Pipe, p_res: Pipe):
@@ -50,11 +51,11 @@ def Hand(p_vido: Pipe, p_res: Pipe):
             vido = cv.cvtColor(vido, cv.COLOR_BGR2RGB)
             result = hands.process(vido)
             if result.multi_hand_landmarks:
-              landmarks = result.multi_hand_landmarks[0].landmark
-              res_hand = landmarks[0]
-              p_res.send([res_hand])
+                landmarks = result.multi_hand_landmarks[0].landmark
+                res_hand = landmarks[0]
+                p_res.send([res_hand])
             else:
-              p_res.send([False])
+                p_res.send([False])
 
 
 if __name__ == '__main__':
@@ -66,15 +67,19 @@ if __name__ == '__main__':
     Hands_process = Process(target=Hand, args=(p2_send_chil, p2_rec_chil,))
     Pose_process.start()
     Hands_process.start()
+    flag = False
+    last_hand = None
+    Str = None
     cap = cv.VideoCapture(0)
     if not cap.isOpened():
-        print(capError+'Not Open.')
+        print(capError, 'Not Open.')
         exit()
     while True:
         success, vido = cap.read()
         if not success:
-            print(capError+'Cannot Read')
+            print(capError, 'Cannot Read')
             print('再次尝试中')
+            continue
         vido.flags.writeable = False
         long = vido.shape[0]
         wide = vido.shape[1]
@@ -82,16 +87,31 @@ if __name__ == '__main__':
         p2_send_par.send(vido)
         shoulder = p1_rec_par.recv()
         hand = p2_rec_par.recv()[0]
-        vido.flags.writeable=True
-        if shoulder[0]!=False:
-          to_int(shoulder[0]),to_int(shoulder[1])
-          cv.line(vido,to_int2(shoulder[0].x,shoulder[1].y),to_int2(shoulder[1].x,shoulder[1].y),(225,0,0),3)
-        if(not(hand==False)):
-          to_int(hand)
-          cv.circle(vido,to_int2(hand.x,hand.y),2,(225,0,0),-1)
-        cv.imshow('test', cv.flip(vido, 1))
+        vido.flags.writeable = True
+        if shoulder[0] != False:
+            to_int(shoulder[0]), to_int(shoulder[1])
+            # cv.line(vido,to_int2(shoulder[0].x,shoulder[1].y),to_int2(shoulder[1].x,shoulder[1].y),(225,0,0),3)
+        if(not(hand == False)):
+            to_int(hand)
+            if not(hand.x < shoulder[1].x and hand.x > shoulder[0].x):
+                if not flag or (abs(last_hand.x-hand.x) < shoulder[1].x-shoulder[0].x):
+                    last_hand = hand
+                    flag = True
+                else:
+                    if(last_hand.x-hand.x) > 0:
+                        # right to left
+                        # Str='<-----'  #输出的是镜像，所以箭头反向
+                        sp.run(['./last.exe'])
+                    else:
+                        # Str='----->'
+                        sp.run(['./next.exe'])
+                    flag = False
+            # cv.circle(vido,to_int2(hand.x,hand.y),2,(225,0,0),-1)
+        # if Str!=None:
+            # cv.putText(vido,Str,(40,80),cv.FONT_HERSHEY_SIMPLEX,2,(225,0,0),1,4)
+        #cv.imshow('test', cv.flip(vido, 1))
         if cv.waitKey(1) == ord('q'):
-          Pose_process.terminate()
-          Hands_process.terminate()
-          break
+            Pose_process.terminate()
+            Hands_process.terminate()
+            break
     cap.release()
