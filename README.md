@@ -1,2 +1,5 @@
 # SmallPY
-**It is just a place where is used to saved my code.**
+简单的代码仓库，一些小玩具。  
+玩具列表：
+* 小说下载
+* 肢体识别
